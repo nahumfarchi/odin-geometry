@@ -42,7 +42,7 @@ import rl "vendor:raylib"
 // These 4 points then serve as the control points for a new curve. Taken all together, we get a surface along
 // the 4 "control" curves.
 
-N_SAMPLES :: 100
+N_SAMPLES :: 25
 
 BezierCurve3D :: struct {
 	controlPoints: [4]v3,
@@ -126,13 +126,24 @@ drawSurface :: proc(surface: BezierSurface3D, lineColor1: rl.Color, lineColor2: 
 
 	// Iterate along the 4 curves
 	nSamples := len(surface.controlCurves[0].samplePoints)
-	for i in 0..<nSamples {
-		pt0 := surface.controlCurves[0].samplePoints[i]
-		pt1 := surface.controlCurves[1].samplePoints[i]
-		pt2 := surface.controlCurves[2].samplePoints[i]
-		pt3 := surface.controlCurves[3].samplePoints[i]
-		curve := createBezierCurve3D({ pt0, pt1, pt2, pt3 })
-		drawCurve3D(curve, lineColor2, nil)
+	for i := 0; i < nSamples; i += 1 {
+		p0 := surface.controlCurves[0].samplePoints[i]
+		p1 := surface.controlCurves[1].samplePoints[i]
+		p2 := surface.controlCurves[2].samplePoints[i]
+		p3 := surface.controlCurves[3].samplePoints[i]
+		curve0 := createBezierCurve3D({ p0, p1, p2, p3 })
+		drawCurve3D(curve0, lineColor2, nil)
+
+		if i+1 < nSamples {
+			q0 := surface.controlCurves[0].samplePoints[i+1]
+			q1 := surface.controlCurves[1].samplePoints[i+1]
+			q2 := surface.controlCurves[2].samplePoints[i+1]
+			q3 := surface.controlCurves[3].samplePoints[i+1]
+			curve1 := createBezierCurve3D({ q0, q1, q2, q3 })
+			for j in 0..<nSamples {
+				rl.DrawLine3D(curve0.samplePoints[j], curve1.samplePoints[j], lineColor2)
+			}
+		}
 	}
 }
 

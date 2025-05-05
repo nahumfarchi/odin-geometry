@@ -5,6 +5,7 @@ import rl "vendor:raylib"
 
 Editor :: struct {
 	camera: rl.Camera,
+	isPanning: bool,
 
 	isEditing: bool,
 	draggedPoint: ^v3,
@@ -53,6 +54,15 @@ editorUpdate :: proc(state: ^GameState, input: GameInput) {
 			fmt.printfln("Stopped dragging control point: %v", editor.draggedPoint^)
 			editor.isEditing = false
 			currentSurface^ = editor.previewSurface
+		}
+	}
+
+	if input.secondaryActionPressed {
+		editor.isPanning = true
+	} else if editor.isPanning {
+		rl.UpdateCamera(&editor.camera, .ORBITAL)
+		if !input.secondaryActionKeyDown {
+			editor.isPanning = false
 		}
 	}
 }

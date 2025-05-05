@@ -43,6 +43,8 @@ GameInput :: struct {
 	// Editor related
 	mainActionPressed: bool,
 	mainActionKeyDown: bool,
+	secondaryActionPressed: bool,
+	secondaryActionKeyDown: bool,
 	saveActionPressed: bool,
 	loadActionPressed: bool,
 }
@@ -171,6 +173,12 @@ getInput :: proc() -> GameInput {
 	}
 	if rl.IsMouseButtonDown(.LEFT) || rl.IsKeyDown(.SPACE) || rl.IsKeyDown(.LEFT_SHIFT) {
 		input.mainActionKeyDown = true
+	}
+	if rl.IsMouseButtonPressed(.RIGHT) {
+		input.secondaryActionPressed = true
+	}
+	if rl.IsMouseButtonDown(.RIGHT) {
+		input.secondaryActionKeyDown = true
 	}
 	if rl.IsKeyDown(.LEFT_CONTROL) && pressedKey == .S {
 		input.saveActionPressed = true
