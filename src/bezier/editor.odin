@@ -12,11 +12,11 @@ Editor :: struct {
 }
 
 editorUpdate :: proc(state: ^GameState, input: GameInput) {
-    editor := &state.editor
+	editor := &state.editor
 	//mousePosition := windowToCanvasPosition(rl.GetMousePosition())
-    mousePosition := rl.GetMousePosition()
+	mousePosition := rl.GetMousePosition()
 	editor.mousePosition = mousePosition
-    currentCurve := &state.curve
+	currentCurve := &state.curve
 	if input.mainActionPressed {
 		controlPoints := currentCurve.controlPoints
 		for controlPoint, index in controlPoints {

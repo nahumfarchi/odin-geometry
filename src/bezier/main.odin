@@ -82,9 +82,9 @@ update :: proc(state: ^GameState, input: GameInput) {
 
 draw :: proc(state: ^GameState) {
 	rl.BeginDrawing()
-    rl.ClearBackground(BACKGROUND_COLOR)
+	rl.ClearBackground(BACKGROUND_COLOR)
 
-    rl.DrawText("Move control points with the mouse", 15, 20, 20, rl.GRAY)
+	rl.DrawText("Move control points with the mouse", 15, 20, 20, rl.GRAY)
 
 	// Draw control points
 	curve := state.curve
