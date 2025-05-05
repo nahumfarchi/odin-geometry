@@ -8,4 +8,4 @@ A collection of geometry algorithms and toy examples implemented in [Odin](https
 
 ## Bezier Surfaces
 
-![Bezier surface gif](https://github.com/nahumfarchi/odin-geometry/blob/main/src/bezier-surface/bazier-surface.gif)
+![Bezier surface gif](https://github.com/nahumfarchi/odin-geometry/blob/main/src/bezier-surface/bazier-surface3.gif)
