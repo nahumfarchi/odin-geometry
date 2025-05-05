@@ -5,39 +5,39 @@ import rl "vendor:raylib"
 // A (3D) bezier surface has 16 control points. It can be thought of as 4 Bezier curves, each constructed
 // from 4 control points and interpolated using the Bernstein polynomial basis functions:
 //
-//  gamma_i(t) = (
-//      p0.x * B0(t) + p1.x * B1(t) + p2.x * B2(t) + p3.x * B3(t)
-//      p0.y * B0(t) + p1.y * B1(t) + p2.y * B2(t) + p3.y * B3(t)
-//		p0.z * B0(t) + p1.z * B1(t) + p2.z * B2(t) + p3.z * B3(t)
-//  )
+// gamma_i(t) = (
+//    p0.x * B0(t) + p1.x * B1(t) + p2.x * B2(t) + p3.x * B3(t)
+//    p0.y * B0(t) + p1.y * B1(t) + p2.y * B2(t) + p3.y * B3(t)
+//    p0.z * B0(t) + p1.z * B1(t) + p2.z * B2(t) + p3.z * B3(t)
+// )
 //
 // The Bezier basis matrix, B, is given by:
-// 	 B = (
-//  	1 -3  3 -1
-//	  	0  3 -6  3
-//	  	0  0  3 -3
-//		0  0  0  1
-//   )
+//    B = (
+//       1 -3  3 -1
+//       0  3 -6  3
+//       0  0  3 -3
+//       0  0  0  1
+//    )
 //
 // And the curve in matrix form is:
-//		gamma_i(t) = G * B * T
+//    gamma_i(t) = G * B * T
 //
 // Where G is a matrix with the control points arranged in its columns:
-//		p0.x p1.x p2.x p3.x
-//		p0.y p1.y p2.y p3.y
-//  	p0.z p1.z p2.z p3.z
+//    p0.x p1.x p2.x p3.x
+//    p0.y p1.y p2.y p3.y
+//    p0.z p1.z p2.z p3.z
 //
 // And T is the monomial basis:
-//		1
-//		t
-//		t^2
-//		t^3
+//    1
+//    t
+//    t^2
+//    t^3
 //
 // The surface is then created by taking a point on each curve for each sampled ts:
-//		gamma_0(ts)
-//		gamma_1(ts)
-//		gamma_2(ts)
-//		gamma_3(ts)
+//    gamma_0(ts)
+//    gamma_1(ts)
+//    gamma_2(ts)
+//    gamma_3(ts)
 //
 // These 4 points then serve as the control points for a new curve. Taken all together, we get a surface along
 // the 4 "control" curves.
@@ -144,7 +144,7 @@ drawCurve3D :: proc(curve: BezierCurve3D, lineColor: rl.Color, pointColor: Maybe
 	}
 	
 	// Draw the curve lines
-	// TODO: do this more efficiently with a single call
+	// TODO: do this more efficiently with a single gl call
 	// e.g. similar to the 2d case: rl.DrawLineStrip(raw_data(curve.samplePoints[:]), len(curve.samplePoints), SURFACE_COLOR)
 	for index in 0..<len(curve.samplePoints)-1 {
 		pt0 := curve.samplePoints[index]

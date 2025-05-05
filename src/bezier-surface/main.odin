@@ -48,7 +48,7 @@ GameInput :: struct {
 }
 
 main :: proc() {
-    initWindow()
+	initWindow()
 	state := initGame()
 
 	for !rl.WindowShouldClose() {
