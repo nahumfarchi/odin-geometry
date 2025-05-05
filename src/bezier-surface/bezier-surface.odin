@@ -120,8 +120,12 @@ createBezierCurve3D :: proc(controlPoints: [4]v3) -> BezierCurve3D {
 }
 
 drawSurface :: proc(surface: BezierSurface3D, lineColor1: rl.Color, lineColor2: rl.Color, pointColor: Maybe(rl.Color)) {
-	for curve in surface.controlCurves {
-		drawCurve3D(curve, lineColor1, pointColor)
+	if pointColorVal, ok := pointColor.(rl.Color); ok {
+		for curve in surface.controlCurves {
+			for pt in curve.controlPoints {
+				rl.DrawSphere(pt, 0.1, pointColorVal)
+			}
+		}
 	}
 
 	// Iterate along the 4 curves
