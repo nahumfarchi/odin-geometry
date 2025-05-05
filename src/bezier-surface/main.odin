@@ -71,11 +71,13 @@ initWindow :: proc() {
 }
 
 initGame :: proc() -> GameState {
+	xOffset := v3{ -3, 0, 0 }
+	yOffset := v3{ 0, -1, 0 }
 	zOffset := v3{ 0, 0, -1 }
-	pt0 := v3{ 0.238335609, 1.63186836, 4.631317 }
-	pt1 := v3{ 0.6189909, 4.3153944, 2.6025438 }
-	pt2 := v3{ 4.128795, 5.173849, 2.3728337 }
-	pt3 := v3{ 5.170785, 2.3052678, 2.3020606 }
+	pt0 := v3{ 0.238335609, 1.63186836, 4.631317 } + xOffset + yOffset + 2*zOffset
+	pt1 := v3{ 0.6189909, 4.3153944, 2.6025438 } + xOffset + yOffset + 2*zOffset
+	pt2 := v3{ 4.128795, 5.173849, 2.3728337 } + xOffset + yOffset + 2*zOffset
+	pt3 := v3{ 5.170785, 2.3052678, 2.3020606 } + xOffset + yOffset + 2*zOffset
 	
 	return GameState{
 		editor = {
