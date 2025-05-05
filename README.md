@@ -4,4 +4,8 @@ A collection of geometry algorithms and toy examples implemented in [Odin](https
 
 ## Bezier Curves
 
-![Bezier curve screenshot](https://github.com/nahumfarchi/odin-geometry/blob/main/src/bezier/bazier.gif)
+![Bezier curve gif](https://github.com/nahumfarchi/odin-geometry/blob/main/src/bezier-curve/bazier-curve.gif)
+
+## Bezier Surfaces
+
+![Bezier surface gif](https://github.com/nahumfarchi/odin-geometry/blob/main/src/bezier-surface/bazier-surface.gif)
