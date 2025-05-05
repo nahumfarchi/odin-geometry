@@ -61,6 +61,10 @@ BEZIER_BASIS_MATRIX :: matrix[4, 4]f32{
 	0,  0,  0,  1,
 }
 
+/* 
+ * Create a Bezier surface from the given control points. 16 points are given, where every 4
+ * define a control curve.
+ */
 createBezierSurface3D :: proc(controlPoints: [16]v3) -> BezierSurface3D {
 	surface: BezierSurface3D
 	for i in 0..<4 {
@@ -75,17 +79,18 @@ createBezierSurface3D :: proc(controlPoints: [16]v3) -> BezierSurface3D {
 	return surface
 }
 
+/* Regenerate the curve sample points. This is called after a control point was edited. */
 regenerateBezierSurface3D :: proc(surface: ^BezierSurface3D) {
 	for i in 0..<len(surface.controlCurves) {
 		surface.controlCurves[i] = createBezierCurve3D(surface.controlCurves[i].controlPoints)
 	}
 }
 
-/* Create a Bezier surface from the given control points (1 section). For simplicitly, the number of samples is hard-coded. */
+/* Create a Bezier curve from the given control points (1 section). For simplicitly, the number of samples is hard-coded. */
 createBezierCurve3D :: proc(controlPoints: [4]v3) -> BezierCurve3D {
-	surface: BezierCurve3D
+	curve: BezierCurve3D
 
-	surface.controlPoints = controlPoints
+	curve.controlPoints = controlPoints
 	p0 := controlPoints[0]
 	p1 := controlPoints[1]
 	p2 := controlPoints[2]
@@ -95,7 +100,7 @@ createBezierCurve3D :: proc(controlPoints: [4]v3) -> BezierCurve3D {
 		p0.y, p1.y, p2.y, p3.y,
 		p0.z, p1.z, p2.z, p3.z,
 	}
-	surface.geometryMatrix = geometryMatrix
+	curve.geometryMatrix = geometryMatrix
 
 	stepSize := f32(1)/f32(N_SAMPLES-1)
 	t := f32(0)
@@ -107,7 +112,7 @@ createBezierCurve3D :: proc(controlPoints: [4]v3) -> BezierCurve3D {
 			t*t*t,
 		}
 		gamma_t := geometryMatrix * BEZIER_BASIS_MATRIX * monomialBasis
-		surface.samplePoints[i] = {
+		curve.samplePoints[i] = {
 			gamma_t[0, 0],
 			gamma_t[1, 0],
 			gamma_t[2, 0],
@@ -116,7 +121,7 @@ createBezierCurve3D :: proc(controlPoints: [4]v3) -> BezierCurve3D {
 		t += stepSize
 	}
 
-	return surface
+	return curve
 }
 
 drawSurface :: proc(surface: BezierSurface3D, lineColor1: rl.Color, lineColor2: rl.Color, pointColor: Maybe(rl.Color)) {
