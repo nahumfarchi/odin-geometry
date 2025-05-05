@@ -4,8 +4,8 @@ package bezier_curve
 // These act as the coeffs to the Bezier basis polynomial functions:
 //
 //  gamma(t) = (
-//      p0.x * B0(t) + p0.x * B1(t) + p1.x * B0(t) + p1.x * B0(t)
-//      p0.y * B0(t) + p0.y * B1(t) + p1.y * B0(t) + p1.y * B0(t)
+//      p0.x * B0(t) + p1.x * B1(t) + p2.x * B2(t) + p3.x * B3(t)
+//      p0.y * B0(t) + p1.y * B1(t) + p2.y * B2(t) + p3.y * B3(t)
 //  )
 //
 // The Bezier basis matrix, B, is given by:

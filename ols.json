@@ -13,9 +13,10 @@
     {
       "name": "linux_profile",
       "os": "linux",
-      "checker_path": ["src/main.odin"]
+      "checker_path": ["src/"]
     },
     { "name": "windows_profile", "os": "windows", "checker_path": ["src"] }
   ],
-  "enable_references": true
+  "enable_references": true,
+  "enable_format": true
 }
