@@ -4,4 +4,4 @@ A collection of geometry algorithms and toy examples implemented in [Odin](https
 
 ## Bezier Curves
 
-![Bezier curve screenshot](/src/bezier/bezier.gif)
+![Bezier curve screenshot](./src/bezier/bezier.gif)
