@@ -8,7 +8,7 @@ set SRC_DIR=src
 
 if not exist %OUT_DIR% mkdir %OUT_DIR%
 
-odin run %SRC_DIR%\bezier-surface -out:%OUT_DIR%\bezier-surface.exe -strict-style -vet -debug
+odin run %SRC_DIR%\catmull-clark -out:%OUT_DIR%\catmull-clark.exe -vet -debug
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 
 echo Debug build created in %OUT_DIR%
