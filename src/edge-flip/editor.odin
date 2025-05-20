@@ -1,4 +1,4 @@
-package catmull_clark
+package edge_flip
 
 // import "core:fmt"
 import rl "vendor:raylib"

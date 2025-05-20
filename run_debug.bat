@@ -8,7 +8,7 @@ set SRC_DIR=src
 
 if not exist %OUT_DIR% mkdir %OUT_DIR%
 
-odin run %SRC_DIR%\catmull-clark -out:%OUT_DIR%\catmull-clark.exe -vet -debug
+odin run %SRC_DIR%\edge-flip -out:%OUT_DIR%\edge-flip.exe -vet -debug
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 
 echo Debug build created in %OUT_DIR%

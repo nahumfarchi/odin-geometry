@@ -1,5 +1,7 @@
-package catmull_clark
+package edge_flip
 
+import "core:fmt"
+import dgl "../dglib"
 import rl "vendor:raylib"
 
 DEBUG                  :: false
@@ -30,7 +32,7 @@ SURFACE_DEBUG_COLOR    :: rl.YELLOW
 GameState :: struct {
 	editor: Editor,
 	model: rl.Model,
-	mesh: ^Mesh,
+	mesh: ^dgl.Mesh,
 }
 
 GameInput :: struct {
@@ -61,7 +63,7 @@ main :: proc() {
 		draw(&state)
 	}
 
-	freeMesh(state.mesh)
+	dgl.freeMesh(state.mesh)
 	rl.CloseWindow()
 }
 
@@ -75,8 +77,8 @@ initWindow :: proc() {
 
 initGame :: proc() -> GameState {
 	//mesh := createTetrahedron()
-	mesh := createCube()
-	rlMesh := toRaylibMesh(mesh)
+	mesh := dgl.createCube()
+	rlMesh := dgl.toRaylibMesh(mesh)
 	model := rl.LoadModelFromMesh(rlMesh)
 	return GameState{
 		editor = {
@@ -93,9 +95,38 @@ initGame :: proc() -> GameState {
 	}
 }
 
-first := true
+iter := 0
 update :: proc(state: ^GameState, input: GameInput) {
 	editorUpdate(state, input)
+
+	if iter % 100 == 0{
+		mesh := state.mesh
+
+		fmt.printfln("Flipping edges...")
+		e01 := &mesh.edges[dgl.getEdgeKey(mesh, 1, 3)]
+		e52 := &mesh.edges[dgl.getEdgeKey(mesh, 5, 2)]
+		e57 := &mesh.edges[dgl.getEdgeKey(mesh, 5, 7)]
+		e43 := &mesh.edges[dgl.getEdgeKey(mesh, 4, 3)]
+		e27 := &mesh.edges[dgl.getEdgeKey(mesh, 2, 7)]
+		e14 := &mesh.edges[dgl.getEdgeKey(mesh, 1, 4)]
+		fmt.printfln("=== MESH BEFORE ===")
+		dgl.printMesh(mesh)
+
+		dgl.flipEdge(mesh, e01)
+		dgl.flipEdge(mesh, e52)
+		dgl.flipEdge(mesh, e57)
+		dgl.flipEdge(mesh, e43)
+		dgl.flipEdge(mesh, e27)
+		dgl.flipEdge(mesh, e14)
+
+		fmt.printfln("=== MESH AFTER ===")
+		dgl.printMesh(mesh)
+
+		rlMesh := dgl.toRaylibMesh(mesh)
+		state.model = rl.LoadModelFromMesh(rlMesh)
+	}
+
+	iter += 1
 }
 
 draw :: proc(state: ^GameState) {
@@ -110,7 +141,6 @@ draw :: proc(state: ^GameState) {
 	position := v3{ 0, 1, 0 }
 	rl.DrawModelEx(model, position, 1.0, 1.0, scale=2.0, tint=rl.DARKBLUE)
 	rl.DrawModelWiresEx(model, position,1.0, 1.0, scale=2.0, tint=rl.BLACK)
-	rl.DrawGrid(10, 1.0)
 
 	rl.EndMode3D()
 	rl.EndDrawing()
