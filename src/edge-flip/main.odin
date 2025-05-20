@@ -77,7 +77,7 @@ initWindow :: proc() {
 
 initGame :: proc() -> GameState {
 	//mesh := createTetrahedron()
-	mesh := dgl.createCube()
+	mesh := dgl.createCube(3)
 	rlMesh := dgl.toRaylibMesh(mesh)
 	model := rl.LoadModelFromMesh(rlMesh)
 	return GameState{
@@ -131,16 +131,24 @@ update :: proc(state: ^GameState, input: GameInput) {
 
 draw :: proc(state: ^GameState) {
 	editor := state.editor
-	model := state.model
 
 	rl.BeginDrawing()
 	rl.ClearBackground(BACKGROUND_COLOR)
 
 	rl.BeginMode3D(editor.camera)
 
-	position := v3{ 0, 1, 0 }
-	rl.DrawModelEx(model, position, 1.0, 1.0, scale=2.0, tint=rl.DARKBLUE)
-	rl.DrawModelWiresEx(model, position,1.0, 1.0, scale=2.0, tint=rl.BLACK)
+	//model := state.model
+	//position := v3{ 0, 1, 0 }
+	//rl.DrawModelEx(model, position, 1.0, 1.0, scale=2.0, tint=rl.DARKBLUE)
+	//rl.DrawModelWiresEx(model, position,1.0, 1.0, scale=2.0, tint=SURFACE_COLOR2)
+
+	for _, edge in state.mesh.edges {
+		vi := edge.v0
+		vj := edge.v1
+		if vi.index < vj.index {
+			rl.DrawLine3D(edge.v0.position, edge.v1.position, SURFACE_COLOR2)
+		}
+	}
 
 	rl.EndMode3D()
 	rl.EndDrawing()

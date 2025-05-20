@@ -221,16 +221,16 @@ flipEdge :: proc(mesh: ^Mesh, eij: ^Edge) {
 }
 
 /* Create a cube half-edge mesh. Memory has to be freed using `freeMesh`. */
-createCube :: proc() -> ^Mesh {
+createCube :: proc(scale: f32) -> ^Mesh {
     return createTriangleMesh({
-        { 1, -1, -1 },
-        { 1, -1, 1 },
-        { 1, 1, 1 },
-        { 1, 1, -1 },
-        { -1, -1, -1 },
-        { -1, -1, 1 },
-        { -1, 1, 1 },
-        { -1, 1, -1 },
+        scale * v3{ 1, -1, -1 },
+        scale * v3{ 1, -1, 1 },
+        scale * v3{ 1, 1, 1 },
+        scale * v3{ 1, 1, -1 },
+        scale * v3{ -1, -1, -1 },
+        scale * v3{ -1, -1, 1 },
+        scale * v3{ -1, 1, 1 },
+        scale * v3{ -1, 1, -1 },
     }, {
         { 3, 1, 0 },
         { 2, 1, 3 },
