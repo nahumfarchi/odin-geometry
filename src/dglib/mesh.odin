@@ -149,6 +149,10 @@ toRaylibMesh :: proc(mesh: ^Mesh) -> rl.Mesh {
     return result
 }
 
+getEdge :: proc(mesh: ^Mesh, a: VertexIndex, b: VertexIndex) -> (^Edge, bool) {
+    return &mesh.edges[getEdgeKey(mesh, a, b)]
+}
+
 getEdgeKey :: proc(mesh: ^Mesh, a: VertexIndex, b: VertexIndex) -> EdgeIndex {
     // The simplest key, but doesn't work well if you want to add or remove vertices.
     //return EdgeIndex(VertexIndex(len(mesh.vertices)) * vi + vj)

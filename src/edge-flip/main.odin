@@ -103,12 +103,12 @@ update :: proc(state: ^GameState, input: GameInput) {
 		mesh := state.mesh
 
 		fmt.printfln("Flipping edges...")
-		e01 := &mesh.edges[dgl.getEdgeKey(mesh, 1, 3)]
-		e52 := &mesh.edges[dgl.getEdgeKey(mesh, 5, 2)]
-		e57 := &mesh.edges[dgl.getEdgeKey(mesh, 5, 7)]
-		e43 := &mesh.edges[dgl.getEdgeKey(mesh, 4, 3)]
-		e27 := &mesh.edges[dgl.getEdgeKey(mesh, 2, 7)]
-		e14 := &mesh.edges[dgl.getEdgeKey(mesh, 1, 4)]
+		e01, _ := dgl.getEdge(mesh, 1, 3)
+		e52, _ := dgl.getEdge(mesh, 5, 2)
+		e57, _ := dgl.getEdge(mesh, 5, 7)
+		e43, _ := dgl.getEdge(mesh, 4, 3)
+		e27, _ := dgl.getEdge(mesh, 2, 7)
+		e14, _ := dgl.getEdge(mesh, 1, 4)
 		fmt.printfln("=== MESH BEFORE ===")
 		dgl.printMesh(mesh)
 
