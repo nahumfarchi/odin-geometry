@@ -13,11 +13,13 @@ Editor :: struct {
 	controlPointRayCollision: rl.RayCollision,
 }
 
-editorUpdate :: proc(state: ^GameState, input: GameInput) {
+editorUpdate :: proc(state: ^GameState, input: GameInput, autoPan: bool = false) {
 	editor := &state.editor
-	if input.secondaryActionPressed {
+	if input.secondaryActionPressed || autoPan {
 		editor.isPanning = true
-	} else if editor.isPanning {
+	}
+	
+	if editor.isPanning {
 		rl.UpdateCamera(&editor.camera, .ORBITAL)
 		if !input.secondaryActionKeyDown {
 			editor.isPanning = false

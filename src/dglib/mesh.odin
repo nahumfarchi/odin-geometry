@@ -488,9 +488,9 @@ splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
         edge_next := getNextEdge(mesh, vedge)
         edge_next_next := getNextEdge(mesh, edge_next)
         edge_next_next_next := getNextEdge(mesh, edge_next_next)
-        if edge != edge_next_next_next {
+        if vedge != edge_next_next_next {
             fmt.printfln("ERROR: splitEdge [%p] e#%v loop is not closed!", vedge, key)
-            assert(vedge == edge_next_next_next, "ERROR: splitEdge: loop is not closed!")
+            assert(false, "ERROR: splitEdge: loop is not closed!")
         }
 
         edge_face := getEdgeFace(mesh, vedge)

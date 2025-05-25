@@ -30,6 +30,8 @@ SURFACE_PREVIEW_COLOR2 :: rl.MAGENTA
 SURFACE_DEBUG_RADIUS   :: 2
 SURFACE_DEBUG_COLOR    :: rl.YELLOW
 
+AUTO_PAN := false
+
 GameState :: struct {
 	editor: Editor,
 	model: rl.Model,
@@ -99,7 +101,11 @@ initGame :: proc() -> GameState {
 iter := 0
 first := true
 update :: proc(state: ^GameState, input: GameInput) {
-	editorUpdate(state, input)
+	if input.secondaryActionKeyDown {
+		AUTO_PAN = true
+	}
+
+	editorUpdate(state, input, AUTO_PAN)
 
 	if input.mainActionPressed {
 		mesh := state.mesh
