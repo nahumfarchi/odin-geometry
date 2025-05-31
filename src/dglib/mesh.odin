@@ -3,6 +3,8 @@ package dglib
 import "core:fmt"
 import rl "vendor:raylib"
 
+DEBUG :: false
+
 VertexIndex :: u16
 EdgeIndex :: u32
 FaceIndex :: u16
@@ -11,11 +13,9 @@ Vertex :: struct {
     position: v3,
     incidentEdge: EdgeIndex,
     index: VertexIndex,
-}
 
-VertexPair :: struct {
-    a: VertexIndex,
-    b: VertexIndex,
+    _isNew: bool,
+    _newPosition: v3,
 }
 
 Edge :: struct {
@@ -26,6 +26,9 @@ Edge :: struct {
     v0: VertexIndex,
     v1: VertexIndex,
     face: FaceIndex,
+
+    _isNew: bool,
+    _newMidpoint: v3,
 }
 
 Face :: struct {
@@ -52,12 +55,19 @@ createTriangleMesh :: proc(positions: []v3, faces: [][3]VertexIndex) -> ^Mesh {
     nv := len(positions)
     nf := len(faces)
     mesh := new(Mesh)
+    // TODO: this is a hack since when the edge map is out of space, it's re-allocated and the memory moves around. If this happens, for example, in the middle of a split operations then all of the edge pointers in use will be invalidated. Reserving a large amount of space in advance is a temporary work around.
+    c := 100000
     mesh.positions = make([dynamic]f32, 3*nv)
     mesh.indices = make([dynamic]VertexIndex, 3*nf)
     mesh.vertices = make([dynamic]Vertex, nv)
     mesh.edges = make(map[EdgeIndex]Edge)
-    mesh.faces = make([dynamic]Face, len(faces))
-    reserve(&mesh.edges, 6*nv) // TODO: count the number of edges instead?
+    mesh.faces = make([dynamic]Face, nf)
+
+    reserve(&mesh.positions, c*3*nv)
+    reserve(&mesh.indices, c*3*nf)
+    reserve(&mesh.vertices, c*nv)
+    reserve(&mesh.faces, c*nf)
+    reserve(&mesh.edges, c*6*nv) // TODO: count the number of edges instead?
 
     for pos, i in positions {
         mesh.positions[3*i] = pos[0]
@@ -108,7 +118,7 @@ createTriangleMesh :: proc(positions: []v3, faces: [][3]VertexIndex) -> ^Mesh {
                 mesh.faces[fi].incidentEdge = eij_key
             }
 
-            if vi < vj {
+            if mesh.vertices[vi].incidentEdge <= 0 {
                 mesh.vertices[vi].incidentEdge = eij_key
             }
         }
@@ -175,54 +185,45 @@ getEdgeKey :: proc(mesh: ^Mesh, a: VertexIndex, b: VertexIndex) -> EdgeIndex {
 
     // Szudzik function: http://szudzik.com/ElegantPairing.pdf
     // Advantage: 32 bits at most, no division or floating points.
-    return EdgeIndex(a >= b ? a * a + a + b : a + b * b) // where a, b >= 0
+    return a >= b ? EdgeIndex(a) * EdgeIndex(a) + EdgeIndex(a) + EdgeIndex(b) : EdgeIndex(a) + EdgeIndex(b) * EdgeIndex(b) // where a, b >= 0
 }
 
 addVertex :: proc(mesh: ^Mesh, position: v3) -> ^Vertex {
-    //append_elem(mesh.positions, position)
     append(&mesh.positions, position.x, position.y, position.z)
     append(&mesh.vertices, Vertex{
         position = position,
         index = VertexIndex(len(mesh.vertices)),
+        _newPosition = position,
     })
     return &mesh.vertices[len(mesh.vertices)-1]
 }
 
 addEdge :: proc(mesh: ^Mesh, a: VertexIndex, b: VertexIndex) -> ^Edge {
     key := getEdgeKey(mesh, a, b)
-    edges := &mesh.edges
-    if edge, found := &edges[key]; found {
-        fmt.printfln("ERROR: addEdge: edge#%v %v->%v already exists!", key, getFromVertex(mesh, edge).index, getToVertex(mesh, edge).index)
-        assert(false, "addEdge: trying to add an edge that already exists in the mesh!")
-    }
-    
-    edges[key] = Edge{
+    mesh.edges[key] = Edge{
         index = key,
         v0 = a,
         v1 = b,
+        _isNew = false,
     }
-    fmt.printfln("\t\t\taddEdge: adding [%p] edge#%v %v->%v", &edges[key], key, a, b)
 
-    return &edges[key]
+    return &mesh.edges[key]
 }
 
 addFace :: proc(mesh: ^Mesh, a: VertexIndex, b: VertexIndex, c: VertexIndex) -> ^Face {
-    if _, found := getEdge(mesh, a, b); found {
-        nf := len(mesh.faces)
-        if a == b || b == c || a == c {
-            fmt.printfln("ERROR: addFace: duplicate vertices %v, %v, %v", a, b, c)
-            assert(false, "addFace: duplicated vertices!")
-        }
-        
-        append(&mesh.indices, a, b, c)
-        append(&mesh.faces, Face{
-            // Use the first edge as the incident edge (arbitrary).
-            index = FaceIndex(nf),
-            incidentEdge = getEdgeKey(mesh, a, b,),
-        })
-    } else {
-        assert(false, "addFace: could not find incident edge a->b!")
+    when DEBUG {
+        _, found := getEdge(mesh, a, b)
+        assertPrint(found, "addFace: could not find incident edge %v->%v!", a, b)
+        assertPrint(!(a == b || b == c || a == c), "ERROR: addFace: duplicate vertices %v, %v, %v", a, b, c)
     }
+
+    nf := len(mesh.faces)
+    append(&mesh.indices, a, b, c)
+    append(&mesh.faces, Face{
+        // Use the first edge as the incident edge (arbitrary).
+        index = FaceIndex(nf),
+        incidentEdge = getEdgeKey(mesh, a, b,),
+    })
     
     return &mesh.faces[len(mesh.faces)-1]
 }
@@ -255,7 +256,30 @@ getToVertex :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
     return &mesh.vertices[edge.v1]
 }
 
-flipEdge :: proc(mesh: ^Mesh, eij: ^Edge) {
+getVertexIncidentEdge :: proc(mesh: ^Mesh, vertex: ^Vertex) -> ^Edge {
+    edge, _ := getEdgeFromIndex(mesh, vertex.incidentEdge)
+    return edge
+}
+
+getIncidentEdge :: proc{getVertexIncidentEdge}
+
+getVertexDegree :: proc(mesh: ^Mesh, vertex: ^Vertex) -> VertexIndex {
+    degree := 1
+    startEdge := getIncidentEdge(mesh, vertex)
+    currentEdge: ^Edge = getOppositeEdge(mesh, startEdge)
+    for getNextEdge(mesh, currentEdge) != startEdge {
+        currentEdge = getNextEdge(mesh, currentEdge)
+        currentEdge = getOppositeEdge(mesh, currentEdge)
+        degree += 1
+    }
+
+    return VertexIndex(degree)
+}
+
+flipEdge :: proc(mesh: ^Mesh, edge: ^Edge) {
+    edges := &mesh.edges
+
+    eij := edge
     eji := getOppositeEdge(mesh, eij)
     ejk := getNextEdge(mesh, eij)
     eki := getNextEdge(mesh, ejk)
@@ -270,10 +294,23 @@ flipEdge :: proc(mesh: ^Mesh, eij: ^Edge) {
     eij.v0 = vl.index
     eij.v1 = vk.index
     eij.next = eki.index
+    eij_old_index := eij.index
+    eij.index = getEdgeKey(mesh, vl.index, vk.index)
+    edges[eij.index] = eij^
+    eij = &mesh.edges[eij.index]
+    delete_key(edges, eij_old_index)
 
     eji.v0 = vk.index
     eji.v1 = vl.index
     eji.next = elj.index
+    eji_old_index := eji.index
+    eji.index = getEdgeKey(mesh, vk.index, vl.index)
+    edges[eji.index] = eji^
+    eji = &mesh.edges[eji.index]
+    delete_key(edges, eji_old_index)
+
+    eij.opposite = eji.index
+    eji.opposite = eij.index
     
     // Update adjacency info
     ejk.next = eji.index
@@ -299,14 +336,19 @@ flipEdge :: proc(mesh: ^Mesh, eij: ^Edge) {
     indices[3*fji.index] = vk.index
     indices[3*fji.index+1] = vl.index
     indices[3*fji.index+2] = vj.index
+
+    eij.face = fij.index
+    eki.face = fij.index
+    eil.face = fij.index
+
+    eji.face = fji.index
+    elj.face = fji.index
+    ejk.face = fji.index
 }
 
 splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
-    fmt.printfln("\t\t(0) validate faces...")
-    validateFaces(mesh)
-
-    fmt.printfln("\t\t(0) validate edges...")
-    validateEdges(mesh)
+    indices := &mesh.indices
+    edges := &mesh.edges
 
     abc := getEdgeFace(mesh, edge)
     bc := edge
@@ -322,39 +364,17 @@ splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
     dc := getNextEdge(mesh, bd)
     d := getFromVertex(mesh, dc)
 
-    indices := &mesh.indices
-
-    assert(bc != nil, "splitEdge: bc is null!")
-    assert(ca != nil, "splitEdge: ca is null!")
-    assert(ab != nil, "splitEdge: ab is null!")
-    assert(cb != nil, "splitEdge: cb is null!")
-    assert(bd != nil, "splitEdge: bd is null!")
-    assert(dc != nil, "splitEdge: dc is null!")
-
-    fmt.printfln("\t\t(0.1) validate faces...")
-    validateFaces(mesh)
-
-    fmt.printfln("\t\tplitEdge: tris abc#%v=(%v, %v, %v), dcb#%v=(%v, %v, %v)", abc.index, a.index, b.index, c.index, dcb.index, d.index, c.index, b.index)
-    fmt.printfln("\t\tsplitEdge: face0=(%v, %v, %v), face1=(%v, %v, %v)", 
-        indices[3*abc.index], indices[3*abc.index+1], indices[3*abc.index+2], 
-        indices[3*dcb.index], indices[3*dcb.index+1], indices[3*dcb.index+2])
-
     // Create the new vertex
     midpoint := (c.position + b.position) / 2
     m := addVertex(mesh, midpoint)
-    fmt.printfln("\t\tsplitEdge: creating vertex %v", m.index)
-
-    fmt.printfln("\t\t(0.1) validate edges...")
-    validateEdges(mesh)
+    m._isNew = true
 
     // Create the new edges
-    fmt.printfln("\t\tsplitEdge: adding a->m...")
     am := addEdge(mesh, a.index, m.index)
-    fmt.printfln("\t\tsplitEdge: adding m->a...")
     ma := addEdge(mesh, m.index, a.index)
     m.incidentEdge = ma.index
 
-    // Re-use cb/bc to avoid deleting an edge
+    // TODO: Re-use cb/bc to avoid deleting an edge?
     mc := addEdge(mesh, m.index, c.index)
     cm := addEdge(mesh, c.index, m.index)
     // mc := bc
@@ -364,23 +384,15 @@ splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
     // cm.v0 = c
     // cm.v1 = m
 
-    fmt.printfln("\t\tsplitEdge: adding m->d...")
     md := addEdge(mesh, m.index, d.index)
-    fmt.printfln("\t\tsplitEdge: adding d->m...")
     dm := addEdge(mesh, d.index, m.index)
 
-    fmt.printfln("\t\tsplitEdge: adding m->b...")
     mb := addEdge(mesh, m.index, b.index)
-    fmt.printfln("\t\tsplitEdge: adding b->m...")
     bm := addEdge(mesh, b.index, m.index)
-
-    fmt.printfln("\t\t(0.2) validate faces...")
-    validateFaces(mesh)
 
     // Create the new faces
     // mca
     // Re-use the old faces abc/dcb to avoid deleting a face
-    //mca := addFace(mesh, m.index, c.index, a.index)
     mca := abc
     mca.incidentEdge = mc.index
     mca_idx := mca.index
@@ -389,7 +401,6 @@ splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
     indices[3*mca_idx+2] = a.index
 
     // mdc
-    //mdc := addFace(mesh, m.index, d.index, c.index)
     mdc := dcb
     mdc.incidentEdge = md.index
     mdc_idx := mdc.index
@@ -416,9 +427,6 @@ splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
     dc.next = cm.index
     dc.face = mdc.index
 
-    fmt.printfln("\t\t(0.3) validate faces...")
-    validateFaces(mesh)
-
     // Update the outer vertices (it's possible that the incident edges will be deleted)
     a.incidentEdge = ab.index
     b.incidentEdge = bd.index
@@ -429,178 +437,129 @@ splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
     am.opposite = ma.index
     am.next = mc.index
     am.face = mca.index
+    am._isNew = true
 
     ma.opposite = am.index
     ma.next = ab.index
     ma.face = mab.index
+    ma._isNew = true
 
     mc.opposite = cm.index
     mc.next = ca.index
     mc.face = mca.index
+    mc._isNew = false
 
     cm.opposite = mc.index
     cm.next = md.index
     cm.face = mdc.index
+    cm._isNew = false
 
     md.opposite = dm.index
     md.next = dc.index
     md.face = mdc.index
+    md._isNew = true
 
     dm.opposite = md.index
     dm.next = mb.index
     dm.face = mbd.index
+    dm._isNew = true
 
     mb.opposite = bm.index
     mb.next = bd.index
     mb.face = mbd.index
+    mb._isNew = false
     
     bm.opposite = mb.index
     bm.next = ma.index
     bm.face = mab.index
+    bm._isNew = false
 
-    fmt.printfln("\t\t(0.4) validate faces...")
-    validateFaces(mesh)
 
     // Delete the old edges
-    edges := &mesh.edges
     delete_key(edges, bc.index)
     delete_key(edges, cb.index)
-
-    fmt.printfln("\t\t(0.5) validate faces...")
-    validateFaces(mesh)
-
-    mab_idx := mab.index
-    mbd_idx := mbd.index
-    fmt.printfln("\t\tsplitEdge: mca=%v, %v, %v", indices[3*mca_idx], indices[3*mca_idx+1], indices[3*mca_idx+2])
-    fmt.printfln("\t\tsplitEdge: mdc=%v, %v, %v", indices[3*mdc_idx], indices[3*mdc_idx+1], indices[3*mdc_idx+2])
-    fmt.printfln("\t\tsplitEdge: mab=%v, %v, %v", indices[3*mab_idx], indices[3*mab_idx+1], indices[3*mab_idx+2])
-    fmt.printfln("\t\tsplitEdge: mbd=%v, %v, %v", indices[3*mbd_idx], indices[3*mbd_idx+1], indices[3*mbd_idx+2])
-
-    // Sanity checks
-    for key, _ in edges {
-        vedge := &edges[key]
-        if getNextEdge(mesh, edge) == nil {
-            fmt.printfln("ERROR: splitEdge [%p] e#%v %v->NULL", edge, key, getFromVertex(mesh, edge).index)
-            //printMesh(mesh)
-            assert(false, "ERROR: splitEdge: null next edge!")
-        }
-
-        edge_next := getNextEdge(mesh, vedge)
-        edge_next_next := getNextEdge(mesh, edge_next)
-        edge_next_next_next := getNextEdge(mesh, edge_next_next)
-        if vedge != edge_next_next_next {
-            fmt.printfln("ERROR: splitEdge [%p] e#%v loop is not closed!", vedge, key)
-            assert(false, "ERROR: splitEdge: loop is not closed!")
-        }
-
-        edge_face := getEdgeFace(mesh, vedge)
-        edge_opposite_face := getOppositeFace(mesh, vedge)
-        if edge_face.index == edge_opposite_face.index {
-            fmt.printfln("ERROR: splitEdge edge#%v %v-%v has an opposite edge with the same face! face#%v", key, getFromVertex(mesh, vedge).index, getToVertex(mesh, vedge).index, edge_face.index)
-            assert(false, "ERROR: splitEdge: invalid edge twin!")
-        }
-
-        if _, ok := getEdge(mesh, edge_face.incidentEdge); !ok {
-            fmt.printfln("ERROR: splitEdge: edge#%v %v->%v has an invalid face! %v", key, getFromVertex(mesh, vedge).index, getToVertex(mesh, vedge).index,  edge_face)
-            assert(false, "ERROR: splitEdge: invalid incident edge in face")
-        }
-
-        if _, ok := getEdge(mesh, edge_opposite_face.incidentEdge); !ok {
-            //fmt.printfln("ERROR: splitEdge: opposite edge#%v %v->%v has an invalid face! %v", getEdgeKey(mesh, edge.opposite.v0.index, edge.opposite.v1.index), edge.opposite.v0.index, edge.opposite.v1.index, edge.opposite.face)
-            assert(false, "ERROR: splitEdge: invalid incident edge in opposite face")
-        }
-    }
-
-    fmt.printfln("\t\t(1) validate edges...")
-    validateEdges(mesh)
-
-    for face, idx in mesh.faces {
-        if face.index > 10000 {
-            fmt.printfln("ERROR: splitEdge: face#%v has an invalid index of %v", idx, face.index)
-            assert(false, "ERROR: splitEdge: invalid face index!")
-        }
-    }
-
-    fmt.printfln("\t\t(1) validate faces...")
-    validateFaces(mesh)
 
     return m
 }
 
-validateEdges :: proc(mesh: ^Mesh) {
-    for key, _ in mesh.edges {
-        edge := &mesh.edges[key]
-        isValid := false
-        isOppositevalid := false
-        for _, i in mesh.faces {
-            face := getEdgeFace(mesh, edge)
-            if face == &mesh.faces[i] {
-                isValid = true
-            }
+loopSubdivision :: proc(mesh: ^Mesh) {
+    edges := &mesh.edges
+    vertices := &mesh.vertices
+    initialVertexCount := VertexIndex(len(mesh.vertices))
 
-            oppositeFace := getOppositeFace(mesh, edge)
-            if oppositeFace == &mesh.faces[i] {
-                isOppositevalid = true
+    // Calculate the new edge midpoints
+    for key, _ in edges {
+        edge := &edges[key]
+        vi := getFromVertex(mesh, edge)
+        vj := getToVertex(mesh, edge)
+        vk := getToVertex(mesh, getNextEdge(mesh, edge))
+        oppositeEdge := &edges[edge.opposite]
+        vl := getToVertex(mesh, getNextEdge(mesh, oppositeEdge))
+        edge._newMidpoint = (3.0/8.0)*(vi.position + vj.position) + (1.0/8.0)*(vk.position + vl.position)
+    }
+
+    // Calculate the new vertex positions
+    for _, i in vertices {
+        v := &vertices[i]
+        degree := getVertexDegree(mesh, v)
+        u := f32(degree == 3 ? 3.0/16.0 : 3.0/(8.0*f32(degree)))
+        v._newPosition = (1-f32(degree)*u) * v.position
+        startEdge := getIncidentEdge(mesh, v)
+        currentEdge := startEdge
+        sanityCheckDegree := VertexIndex(0)
+        for {
+            next := getNextEdge(mesh, currentEdge)
+            v._newPosition += u * getToVertex(mesh, next).position
+            currentEdge = getOppositeEdge(mesh, getNextEdge(mesh, next))
+            sanityCheckDegree += 1
+            if currentEdge == startEdge {
+                break
             }
         }
 
-        if !isValid {
-            printMesh(mesh)
-            fmt.printfln("ERROR: splitEdge: [%p] edge#%v %v->%v is point at an non-existant face [%p]!", &mesh.edges[key], key, getFromVertex(mesh, edge).index, getToVertex(mesh, edge).index, edge.face)
-            assert(false, "ERROR: splitEdge: edge is point at an non-existant face!")
-        }
-
-        if !isOppositevalid {
-            fmt.printfln("ERROR: splitEdge: edge#%v %v->%v is pointing at an non-existant opposite face!", key, getFromVertex(mesh, edge).index, getToVertex(mesh, edge).index)
-            assert(false, "ERROR: splitEdge: edge is pointing at an non-existant oppsite face!")
+        when DEBUG {
+            assertPrint(degree == sanityCheckDegree, "ERROR: vertex %v, degree=%v, sanityCheck=%v", i, degree, sanityCheckDegree)
         }
     }
-}
 
-validateFaces :: proc(mesh: ^Mesh) {
-    indices := &mesh.indices
-    for _, idx in mesh.faces {
-        vi := indices[3*idx]
-        vj := indices[3*idx+1]
-        vk := indices[3*idx+2]
-        _, okij := getEdge(mesh, vi, vj)
-        if !okij {
-            //fmt.printfln("ERROR: splitEdge: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", idx, vi, vj, vk, getEdgeKey(mesh, vi, vj), vi, vj)
-            assert(false, "ERROR: splitEdge: invalid face!")
-        }
+    // Split all of the edges
+    for key, _ in edges {
+        edge := &edges[key]
+        vi, vj := getEdgeVertices(mesh, edge)
 
-        _, okji := getEdge(mesh, vj, vi)
-        if !okji {
-            //fmt.printfln("ERROR: splitEdge: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", idx, vi, vj, vk, getEdgeKey(mesh, vj, vi), vj, vi)
-            assert(false, "ERROR: splitEdge: invalid face!")
-        }
-
-        _, okjk := getEdge(mesh, vj, vk)
-        if !okjk {
-            //fmt.printfln("ERROR: splitEdge: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", idx, vi, vj, vk, getEdgeKey(mesh, vj, vk), vj, vk)
-            assert(false, "ERROR: splitEdge: invalid face!")
-        }
-
-        _, okkj := getEdge(mesh, vk, vj)
-        if !okkj {
-            //fmt.printfln("ERROR: splitEdge: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", idx, vi, vj, vk, getEdgeKey(mesh, vk, vj), vk, vj)
-            assert(false, "ERROR: splitEdge: invalid face!")
-        }
-
-        _, okki := getEdge(mesh, vk, vi)
-        if !okki {
-            //fmt.printfln("ERROR: splitEdge: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", idx, vi, vj, vk, getEdgeKey(mesh, vk, vi), vk, vi)
-            assert(false, "ERROR: splitEdge: invalid face!")
-        }
-
-        _, okik := getEdge(mesh, vi, vk)
-        if !okik {
-            //fmt.printfln("ERROR: splitEdge: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", idx, vi, vj, vk, getEdgeKey(mesh, vi, vk), vi, vk)
-            assert(false, "ERROR: splitEdge: invalid face!")
+        // Check that we haven't split this edge already or that it's not a newly created edge
+        if vi.index < vj.index && vi.index < initialVertexCount && vj.index < initialVertexCount {
+            splitEdge(mesh, edge)
         }
     }
-}
 
+    // Flip new edges that connect a new to an old vertex
+    for key, _ in edges {
+        edge := &edges[key]
+        vi, vj := getEdgeVertices(mesh, edge)
+        if edge._isNew && vi.index < vj.index && 
+            ((vi._isNew && !vj._isNew) || (!vi._isNew && vj._isNew)) {
+
+            flipEdge(mesh, edge)
+            edge._isNew = false
+        }
+    }
+
+    positions := &mesh.positions
+    for i in 0..<len(vertices) {
+        v := &vertices[i]
+        v.position = v._newPosition
+        v._isNew = false
+        positions[3*i] = v._newPosition[0]
+        positions[3*i+1] = v._newPosition[1]
+        positions[3*i+2] = v._newPosition[2]
+    }
+
+    for key, _ in edges {
+        edge, _ := getEdgeFromIndex(mesh, key)
+        edge._isNew = false
+    }
+}
 
 /* Create a cube half-edge mesh. Memory has to be freed using `freeMesh`. */
 createCube :: proc(scale: f32) -> ^Mesh {
@@ -630,12 +589,12 @@ createCube :: proc(scale: f32) -> ^Mesh {
 }
 
 /* Create a tetrahedron half-edge mesh. Memory has to be freed using `freeMesh`. */
-createTetrahedron :: proc() -> ^Mesh {
+createTetrahedron :: proc(scale: f32) -> ^Mesh {
     return createTriangleMesh({
-        { 0.000, 1.333, 0 },
-        { 0.943, 0, 0 },
-        { -0.471, 0, 0.816 },
-        { -0.471, 0, -0.816 },
+        scale * v3{ 0.000, 1.333, 0 },
+        scale * v3{ 0.943, 0, 0 },
+        scale * v3{ -0.471, 0, 0.816 },
+        scale * v3{ -0.471, 0, -0.816 },
     }, {
         { 2,1,0 },
         { 3,2,0 },
@@ -644,11 +603,49 @@ createTetrahedron :: proc() -> ^Mesh {
     })
 }
 
+createIcosahedron :: proc(scale: f32) -> ^Mesh {
+    return createTriangleMesh({
+        scale * v3{ 0.000,  0.000,  1.000 },
+        scale * v3{ 0.894,  0.000,  0.447 },
+        scale * v3{ 0.276,  0.851,  0.447 },
+        scale * v3{ -0.724,  0.526,  0.447 },
+        scale * v3{ -0.724, -0.526,  0.447 },
+        scale * v3{ 0.276, -0.851,  0.447 },
+        scale * v3{ 0.724,  0.526, -0.447 },
+        scale * v3{ -0.276,  0.851, -0.447 },
+        scale * v3{ -0.894,  0.000, -0.447 },
+        scale * v3{ -0.276, -0.851, -0.447 },
+        scale * v3{ 0.724, -0.526, -0.447 },
+        scale * v3{ 0.000,  0.000, -1.000 },
+    }, {
+        { 0,1,2 },
+        { 0,2,3 },
+        { 0,3,4 },
+        { 0,4,5 },
+        { 0,5,1 },
+        { 7,6,11 },
+        { 8,7,11 },
+        { 9,8,11 },
+        { 10,9,11 },
+        { 6,10,11 },
+        { 6,2,1 },
+        { 7,3,2 },
+        { 8,4,3 },
+        { 9,5,4 },
+        { 10,1,5 },
+        { 6,7,2 },
+        { 7,8,3 },
+        { 8,9,4 },
+        { 9,10,5 },
+        { 10,6,1 },
+    });
+}
+
 printMesh :: proc(mesh: ^Mesh) {
     fmt.printfln("Half-Edge Mesh:")
     fmt.printfln("Vertices: ")
     for v in mesh.vertices {
-        fmt.printfln("\tv#%v: %v", v.index, v.position)
+        fmt.printfln("\tv#%v: position=%v, newPosition=%v", v.index, v.position, v._newPosition)
     }
 
     fmt.printfln("Edges:")
@@ -660,6 +657,7 @@ printMesh :: proc(mesh: ^Mesh) {
         if getNextEdge(mesh, edge) != nil {
             to := getToVertex(mesh, edge)
             fmt.printfln("\t[%p] e#%v: %v->%v, oppositeIndex=%v", &mesh.edges[key], key, from.index, to.index, edge.opposite)
+            fmt.printfln("\t\t[%p] edge: %v", edge, edge)
             fmt.printfln("\t\t[%p] face: %v", face, face)
             fmt.printfln("\t\t[%p] opposite face: %v", oppositeFace, oppositeFace)
         } else {
@@ -669,10 +667,18 @@ printMesh :: proc(mesh: ^Mesh) {
 
     fmt.printfln("Faces:")
     for f, i in mesh.faces {
-        e0, _ := getEdge(mesh, f.incidentEdge)
+        e0, ok := getEdge(mesh, f.incidentEdge)
+        if !ok {
+            fmt.printfln("Face#%v incident edge#%v does not exist!", i, f.incidentEdge)
+        }
         e1 := getNextEdge(mesh, e0)
         e2 := getNextEdge(mesh, e1)
-        fmt.printfln("\t[%p] f#%v: %v, %v, %v", &mesh.faces[i], f.index, getFromVertex(mesh, e0).index, getFromVertex(mesh, e1).index, getFromVertex(mesh, e2))
+        fmt.printfln("\t[%p] f#%v: %v, %v, %v", 
+            &mesh.faces[i], 
+            f.index, 
+            getFromVertex(mesh, e0).index, 
+            getFromVertex(mesh, e1).index, 
+            getFromVertex(mesh, e2).index)
     }
     fmt.printfln("====\n")
 }
