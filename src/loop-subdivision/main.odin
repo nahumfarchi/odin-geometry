@@ -1,6 +1,5 @@
 package loop_subdivision
 
-// import "core:fmt"
 import dgl "../dglib"
 import rl "vendor:raylib"
 
@@ -30,11 +29,17 @@ SURFACE_DEBUG_RADIUS   :: 2
 SURFACE_DEBUG_COLOR    :: rl.YELLOW
 
 AUTO_PAN := false
+K :: 6
 
 GameState :: struct {
 	editor: Editor,
 	model: rl.Model,
 	mesh: ^dgl.Mesh,
+	meshes: [K]^dgl.Mesh,
+	models: [K]rl.Model,
+	currentMeshIndex: int,
+	inc: int,
+	elapsed: f32,
 }
 
 GameInput :: struct {
@@ -79,8 +84,18 @@ initWindow :: proc() {
 
 initGame :: proc() -> GameState {
 	mesh := dgl.createIcosahedron(3)
-	rlMesh := dgl.toRaylibMesh(mesh)
-	model := rl.LoadModelFromMesh(rlMesh)
+	meshes: [K]^dgl.Mesh
+	models: [K]rl.Model
+	for i in 0..<K {
+		meshCopy := dgl.copyMesh(mesh)
+		meshes[i] = meshCopy
+		rlMeshCopy := dgl.toRaylibMesh(meshCopy)
+		models[i] = rl.LoadModelFromMesh(rlMeshCopy)
+		dgl.loopSubdivision(mesh)
+	}
+
+	rlMesh := dgl.toRaylibMesh(meshes[2])
+	model := rl.LoadModelFromMesh(rlMesh)	
 
 	return GameState{
 		editor = {
@@ -94,6 +109,10 @@ initGame :: proc() -> GameState {
 		},
 		model = model,
 		mesh = mesh,
+		meshes = meshes,
+		models = models,
+		currentMeshIndex = 0,
+		inc = 1,
 	}
 }
 
@@ -106,14 +125,15 @@ update :: proc(state: ^GameState, input: GameInput) {
 
 	editorUpdate(state, input, AUTO_PAN)
 
-	mesh := state.mesh
+	dt := 1000*rl.GetFrameTime()
+	state.elapsed += dt
+	if state.elapsed >= 115 {
+		state.elapsed = 0
+		state.currentMeshIndex = (state.currentMeshIndex+state.inc) % K
 
-	if input.mainActionPressed {
-		dgl.loopSubdivision(mesh)
-
-		rlMesh := dgl.toRaylibMesh(mesh)
-		model := rl.LoadModelFromMesh(rlMesh)
-		state.model = model
+		if state.currentMeshIndex == K-1 || state.currentMeshIndex == 0 {
+			state.inc *= -1
+		}
 	}
 
 	iter += 1
@@ -128,7 +148,8 @@ draw :: proc(state: ^GameState) {
 	rl.BeginMode3D(editor.camera)
 
 	position := v3{ 0, 0, 0 }
-	rl.DrawModelWiresEx(state.model, position, 1.0, 1.0, scale=2.0, tint=SURFACE_COLOR2)
+	model := state.models[state.currentMeshIndex]
+	rl.DrawModelWiresEx(model, position, 1.0, 1.0, scale=2.0, tint=SURFACE_COLOR2)
 
 	rl.EndMode3D()
 	rl.EndDrawing()

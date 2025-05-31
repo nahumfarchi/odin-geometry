@@ -142,6 +142,57 @@ freeMesh :: proc(mesh: ^Mesh) {
     free(mesh)
 }
 
+/*
+ * Create a deep copy of the given mesh.
+ *
+ * Note: call freeMesh to free the allocated memory.
+ */
+copyMesh :: proc(mesh: ^Mesh) -> ^Mesh {
+    result := new(Mesh)
+
+    nv := nVertices(mesh)
+    nf := nFaces(mesh)
+    ne := nEdges(mesh)
+    result.positions = make([dynamic]f32, 3*nv)
+    result.indices = make([dynamic]VertexIndex, 3*nf)
+    result.vertices = make([dynamic]Vertex, nv)
+    result.edges = make(map[EdgeIndex]Edge)
+    result.faces = make([dynamic]Face, nf)
+
+    for srcVertex, i in mesh.vertices {
+        dstVertex := &result.vertices[i]
+        dstVertex^ = srcVertex
+        dstVertex.mesh = result
+        result.positions[3*i] = srcVertex.position[0]
+        result.positions[3*i+1] = srcVertex.position[1]
+        result.positions[3*i+2] = srcVertex.position[2]
+    }
+
+    reserve(&result.edges, ne)
+    for key, _ in mesh.edges {
+        srcEdge := &mesh.edges[key]
+        dstEdge, found := &result.edges[key]
+        if !found {
+            result.edges[key] = Edge{}
+            dstEdge = &result.edges[key]
+        }
+        dstEdge^ = srcEdge^
+        dstEdge.mesh = result
+    }
+
+    for srcFace, i in mesh.faces {
+        dstFace := &result.faces[i]
+        dstFace^ = srcFace
+        dstFace.mesh = result
+    }
+
+    for fi, i in mesh.indices {
+        result.indices[i] = fi
+    }
+     
+    return result
+}
+
 /* 
  * Convert the half-edge mesh to a raylib mesh. 
  * Note: the same underlying data is used and no allocations are performed.
@@ -280,6 +331,18 @@ getVertexDegree :: proc(vertex: ^Vertex) -> VertexIndex {
     }
 
     return VertexIndex(degree)
+}
+
+nVertices :: proc(mesh: ^Mesh) -> int {
+    return len(mesh.vertices)
+}
+
+nEdges :: proc(mesh: ^Mesh) -> int {
+    return len(mesh.edges)
+}
+
+nFaces :: proc(mesh: ^Mesh) -> int {
+    return len(mesh.faces)
 }
 
 flipEdge :: proc(edge: ^Edge) {
@@ -647,8 +710,8 @@ createIcosahedron :: proc(scale: f32) -> ^Mesh {
 printMesh :: proc(mesh: ^Mesh) {
     fmt.printfln("Half-Edge Mesh:")
     fmt.printfln("Vertices: ")
-    for v in mesh.vertices {
-        fmt.printfln("\tv#%v: position=%v, newPosition=%v", v.index, v.position, v._newPosition)
+    for &v in mesh.vertices {
+        fmt.printfln("\t[%p] v#%v: position=%v, newPosition=%v, mesh=%p", &v, v.index, v.position, v._newPosition, v.mesh)
     }
 
     fmt.printfln("Edges:")
@@ -656,7 +719,7 @@ printMesh :: proc(mesh: ^Mesh) {
         from := getFromVertex(&edge)
         if getNextEdge(&edge) != nil {
             to := getToVertex(&edge)
-            fmt.printfln("\t[%p] e#%v: %v->%v, oppositeIndex=%v", &edge, key, from.index, to.index, edge.opposite)
+            fmt.printfln("\t[%p] e#%v: %v->%v, oppositeIndex=%v, mesh=%p", &edge, key, from.index, to.index, edge.opposite, edge.mesh)
         } else {
             fmt.printfln("\te#%v: %v->NULL", key, from.index)
         }
@@ -667,12 +730,13 @@ printMesh :: proc(mesh: ^Mesh) {
         e0 := getIncidentEdge(&f)
         e1 := getNextEdge(e0)
         e2 := getNextEdge(e1)
-        fmt.printfln("\t[%p] f#%v: %v, %v, %v", 
+        fmt.printfln("\t[%p] f#%v: %v, %v, %v, mesh=%p", 
             &f, 
             f.index, 
             getFromVertex(e0).index, 
             getFromVertex(e1).index, 
-            getFromVertex(e2).index)
+            getFromVertex(e2).index,
+            f.mesh)
     }
     fmt.printfln("====\n")
 }
