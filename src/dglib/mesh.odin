@@ -10,6 +10,7 @@ EdgeIndex :: u32
 FaceIndex :: u16
 
 Vertex :: struct {
+    mesh: ^Mesh,
     position: v3,
     incidentEdge: EdgeIndex,
     index: VertexIndex,
@@ -19,6 +20,7 @@ Vertex :: struct {
 }
 
 Edge :: struct {
+    mesh: ^Mesh,
     index: EdgeIndex,
     opposite: EdgeIndex,
     // prev: EdgeIndex // TODO
@@ -32,6 +34,7 @@ Edge :: struct {
 }
 
 Face :: struct {
+    mesh: ^Mesh,
     index: FaceIndex,
     incidentEdge: EdgeIndex,
 }
@@ -74,6 +77,7 @@ createTriangleMesh :: proc(positions: []v3, faces: [][3]VertexIndex) -> ^Mesh {
         mesh.positions[3*i+1] = pos[1]
         mesh.positions[3*i+2] = pos[2]
 
+        mesh.vertices[i].mesh = mesh
         mesh.vertices[i].position = pos
         mesh.vertices[i].index = VertexIndex(i)
     }
@@ -83,14 +87,15 @@ createTriangleMesh :: proc(positions: []v3, faces: [][3]VertexIndex) -> ^Mesh {
         mesh.indices[3*fi] = VertexIndex(faceVertices[0])
         mesh.indices[3*fi+1] = VertexIndex(faceVertices[1])
         mesh.indices[3*fi+2] = VertexIndex(faceVertices[2])
+        mesh.faces[fi].mesh = mesh
         mesh.faces[fi].index = FaceIndex(fi)
         for i in 0..<3 {
             vi := faceVertices[i]
             vj := faceVertices[(i+1)%3]
             vk := faceVertices[(i+2)%3]
-            eij_key := getEdgeKey(mesh, vi, vj)
-            eji_key := getEdgeKey(mesh, vj, vi)
-            ejk_key := getEdgeKey(mesh, vj, vk)
+            eij_key := getEdgeKey(vi, vj)
+            eji_key := getEdgeKey(vj, vi)
+            ejk_key := getEdgeKey(vj, vk)
             eij, ok_ij := &edges[eij_key]
             if !ok_ij {
                 edges[eij_key] = Edge{}
@@ -107,6 +112,7 @@ createTriangleMesh :: proc(positions: []v3, faces: [][3]VertexIndex) -> ^Mesh {
                 ejk = &edges[ejk_key]
             }
 
+            eij.mesh = mesh
             eij.index = eij_key
             eij.opposite = eji_key
             eij.next = ejk_key
@@ -155,26 +161,15 @@ toRaylibMesh :: proc(mesh: ^Mesh) -> rl.Mesh {
     return result
 }
 
-getVertex :: proc(mesh: ^Mesh, index: VertexIndex) -> ^Vertex {
-    return &mesh.vertices[index]
-}
-
 getEdgeFromVertexIndices :: proc(mesh: ^Mesh, a: VertexIndex, b: VertexIndex) -> (^Edge, bool) {
-    return &mesh.edges[getEdgeKey(mesh, a, b)]
+    return &mesh.edges[getEdgeKey(a, b)]
 }
 
 getEdgeFromIndex :: proc(mesh: ^Mesh, index: EdgeIndex) -> (^Edge, bool) {
     return &mesh.edges[index]
 }
 
-getEdge :: proc{getEdgeFromVertexIndices, getEdgeFromIndex}
-
-getFace :: proc(mesh: ^Mesh, index: FaceIndex) -> ^Face {
-    return &mesh.faces[index]
-}
-
-// TODO: mesh param is currently unused
-getEdgeKey :: proc(mesh: ^Mesh, a: VertexIndex, b: VertexIndex) -> EdgeIndex {
+getEdgeKey :: proc(a: VertexIndex, b: VertexIndex) -> EdgeIndex {
     // The simplest key, but doesn't work well if you want to add or remove vertices.
     //return EdgeIndex(VertexIndex(len(mesh.vertices)) * vi + vj)
 
@@ -191,6 +186,7 @@ getEdgeKey :: proc(mesh: ^Mesh, a: VertexIndex, b: VertexIndex) -> EdgeIndex {
 addVertex :: proc(mesh: ^Mesh, position: v3) -> ^Vertex {
     append(&mesh.positions, position.x, position.y, position.z)
     append(&mesh.vertices, Vertex{
+        mesh = mesh,
         position = position,
         index = VertexIndex(len(mesh.vertices)),
         _newPosition = position,
@@ -198,104 +194,115 @@ addVertex :: proc(mesh: ^Mesh, position: v3) -> ^Vertex {
     return &mesh.vertices[len(mesh.vertices)-1]
 }
 
-addEdge :: proc(mesh: ^Mesh, a: VertexIndex, b: VertexIndex) -> ^Edge {
-    key := getEdgeKey(mesh, a, b)
+addEdge :: proc(mesh: ^Mesh, a: ^Vertex, b: ^Vertex) -> ^Edge {
+    key := getEdgeKey(a.index, b.index)
     mesh.edges[key] = Edge{
+        mesh = mesh,
         index = key,
-        v0 = a,
-        v1 = b,
+        v0 = a.index,
+        v1 = b.index,
         _isNew = false,
     }
 
     return &mesh.edges[key]
 }
 
-addFace :: proc(mesh: ^Mesh, a: VertexIndex, b: VertexIndex, c: VertexIndex) -> ^Face {
+addFace :: proc(mesh: ^Mesh, a: ^Vertex, b: ^Vertex, c: ^Vertex) -> ^Face {
+    ai := a.index
+    bi := b.index
+    ci := c.index
     when DEBUG {
-        _, found := getEdge(mesh, a, b)
-        assertPrint(found, "addFace: could not find incident edge %v->%v!", a, b)
-        assertPrint(!(a == b || b == c || a == c), "ERROR: addFace: duplicate vertices %v, %v, %v", a, b, c)
+        _, found := getEdgeFromIndex(mesh, ai, bi)
+        assertPrint(found, "addFace: could not find incident edge %v->%v!", ai, bi)
+        assertPrint(!(ai == bi || bi == ci || ai == ci), "ERROR: addFace: duplicate vertices %v, %v, %v", ai, bi, ci)
     }
 
     nf := len(mesh.faces)
-    append(&mesh.indices, a, b, c)
+    append(&mesh.indices, ai, bi, ci)
     append(&mesh.faces, Face{
         // Use the first edge as the incident edge (arbitrary).
         index = FaceIndex(nf),
-        incidentEdge = getEdgeKey(mesh, a, b,),
+        incidentEdge = getEdgeKey(ai, bi),
     })
     
     return &mesh.faces[len(mesh.faces)-1]
 }
 
-getNextEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Edge {
-    return &mesh.edges[edge.next]
+getNextEdge :: proc(edge: ^Edge) -> ^Edge {
+    return &edge.mesh.edges[edge.next]
 }
 
-getOppositeEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Edge {
-    return &mesh.edges[edge.opposite]
+getOppositeEdge :: proc(edge: ^Edge) -> ^Edge {
+    return &edge.mesh.edges[edge.opposite]
 }
 
-getEdgeFace :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Face {    
-    return &mesh.faces[edge.face]
+getEdgeFace :: proc(edge: ^Edge) -> ^Face {    
+    return &edge.mesh.faces[edge.face]
 }
 
-getOppositeFace :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Face {
-    return &mesh.faces[getOppositeEdge(mesh, edge).face]
+getOppositeFace :: proc(edge: ^Edge) -> ^Face {
+    return &edge.mesh.faces[getOppositeEdge(edge).face]
 }
 
-getEdgeVertices :: proc(mesh: ^Mesh, edge: ^Edge) -> (^Vertex, ^Vertex) {
+getEdgeVertices :: proc(edge: ^Edge) -> (^Vertex, ^Vertex) {
+    mesh := edge.mesh
     return &mesh.vertices[edge.v0], &mesh.vertices[edge.v1]
 }
 
-getFromVertex :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
-    return &mesh.vertices[edge.v0]
+getFromVertex :: proc(edge: ^Edge) -> ^Vertex {
+    return &edge.mesh.vertices[edge.v0]
 }
 
-getToVertex :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
-    return &mesh.vertices[edge.v1]
+getToVertex :: proc(edge: ^Edge) -> ^Vertex {
+    return &edge.mesh.vertices[edge.v1]
 }
 
-getVertexIncidentEdge :: proc(mesh: ^Mesh, vertex: ^Vertex) -> ^Edge {
-    edge, _ := getEdgeFromIndex(mesh, vertex.incidentEdge)
+getVertexIncidentEdge :: proc(vertex: ^Vertex) -> ^Edge {
+    edge, _ := getEdgeFromIndex(vertex.mesh, vertex.incidentEdge)
     return edge
 }
 
-getIncidentEdge :: proc{getVertexIncidentEdge}
+getFaceIncidentEdge :: proc(face: ^Face) -> ^Edge {
+    edge, _ := getEdgeFromIndex(face.mesh, face.incidentEdge)
+    return edge
+}
 
-getVertexDegree :: proc(mesh: ^Mesh, vertex: ^Vertex) -> VertexIndex {
+getIncidentEdge :: proc{getVertexIncidentEdge, getFaceIncidentEdge}
+
+getVertexDegree :: proc(vertex: ^Vertex) -> VertexIndex {
     degree := 1
-    startEdge := getIncidentEdge(mesh, vertex)
-    currentEdge: ^Edge = getOppositeEdge(mesh, startEdge)
-    for getNextEdge(mesh, currentEdge) != startEdge {
-        currentEdge = getNextEdge(mesh, currentEdge)
-        currentEdge = getOppositeEdge(mesh, currentEdge)
+    startEdge := getIncidentEdge(vertex)
+    currentEdge: ^Edge = getOppositeEdge(startEdge)
+    for getNextEdge(currentEdge) != startEdge {
+        currentEdge = getNextEdge(currentEdge)
+        currentEdge = getOppositeEdge(currentEdge)
         degree += 1
     }
 
     return VertexIndex(degree)
 }
 
-flipEdge :: proc(mesh: ^Mesh, edge: ^Edge) {
+flipEdge :: proc(edge: ^Edge) {
+    mesh := edge.mesh
     edges := &mesh.edges
 
     eij := edge
-    eji := getOppositeEdge(mesh, eij)
-    ejk := getNextEdge(mesh, eij)
-    eki := getNextEdge(mesh, ejk)
-    eil := getNextEdge(mesh, eji)
-    elj := getNextEdge(mesh, eil)
+    eji := getOppositeEdge(eij)
+    ejk := getNextEdge(eij)
+    eki := getNextEdge(ejk)
+    eil := getNextEdge(eji)
+    elj := getNextEdge(eil)
 
-    vi, vj := getEdgeVertices(mesh, eij)
-    vk := getFromVertex(mesh, eki)
-    vl := getFromVertex(mesh, elj)
+    vi, vj := getEdgeVertices(eij)
+    vk := getFromVertex( eki)
+    vl := getFromVertex(elj)
 
     // Flip the edges
     eij.v0 = vl.index
     eij.v1 = vk.index
     eij.next = eki.index
     eij_old_index := eij.index
-    eij.index = getEdgeKey(mesh, vl.index, vk.index)
+    eij.index = getEdgeKey(vl.index, vk.index)
     edges[eij.index] = eij^
     eij = &mesh.edges[eij.index]
     delete_key(edges, eij_old_index)
@@ -304,7 +311,7 @@ flipEdge :: proc(mesh: ^Mesh, edge: ^Edge) {
     eji.v1 = vl.index
     eji.next = elj.index
     eji_old_index := eji.index
-    eji.index = getEdgeKey(mesh, vk.index, vl.index)
+    eji.index = getEdgeKey(vk.index, vl.index)
     edges[eji.index] = eji^
     eji = &mesh.edges[eji.index]
     delete_key(edges, eji_old_index)
@@ -323,8 +330,8 @@ flipEdge :: proc(mesh: ^Mesh, edge: ^Edge) {
     vk.incidentEdge = eji.index
     vl.incidentEdge = eij.index
 
-    fij := getEdgeFace(mesh, eij)
-    fji := getEdgeFace(mesh, eji)
+    fij := getEdgeFace(eij)
+    fji := getEdgeFace(eji)
     fij.incidentEdge = eij.index
     fji.incidentEdge = eji.index
     
@@ -346,23 +353,24 @@ flipEdge :: proc(mesh: ^Mesh, edge: ^Edge) {
     ejk.face = fji.index
 }
 
-splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
+splitEdge :: proc(edge: ^Edge) -> ^Vertex {
+    mesh := edge.mesh
     indices := &mesh.indices
     edges := &mesh.edges
 
-    abc := getEdgeFace(mesh, edge)
+    abc := getEdgeFace(edge)
     bc := edge
-    ca := getNextEdge(mesh, edge)
-    ab := getNextEdge(mesh, ca)
-    a := getFromVertex(mesh, ab)
-    b := getToVertex(mesh, ab)
-    c := getFromVertex(mesh, ca)
+    ca := getNextEdge(edge)
+    ab := getNextEdge(ca)
+    a := getFromVertex(ab)
+    b := getToVertex(ab)
+    c := getFromVertex(ca)
 
-    dcb := getOppositeFace(mesh, edge)
-    cb := getOppositeEdge(mesh, bc)
-    bd := getNextEdge(mesh, cb)
-    dc := getNextEdge(mesh, bd)
-    d := getFromVertex(mesh, dc)
+    dcb := getOppositeFace(edge)
+    cb := getOppositeEdge(bc)
+    bd := getNextEdge(cb)
+    dc := getNextEdge(bd)
+    d := getFromVertex(dc)
 
     // Create the new vertex
     midpoint := (c.position + b.position) / 2
@@ -370,13 +378,13 @@ splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
     m._isNew = true
 
     // Create the new edges
-    am := addEdge(mesh, a.index, m.index)
-    ma := addEdge(mesh, m.index, a.index)
+    am := addEdge(mesh, a, m)
+    ma := addEdge(mesh, m, a)
     m.incidentEdge = ma.index
 
     // TODO: Re-use cb/bc to avoid deleting an edge?
-    mc := addEdge(mesh, m.index, c.index)
-    cm := addEdge(mesh, c.index, m.index)
+    mc := addEdge(mesh, m, c)
+    cm := addEdge(mesh, c, m)
     // mc := bc
     // cm := cb
     // mc.v0 = m
@@ -384,11 +392,11 @@ splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
     // cm.v0 = c
     // cm.v1 = m
 
-    md := addEdge(mesh, m.index, d.index)
-    dm := addEdge(mesh, d.index, m.index)
+    md := addEdge(mesh, m, d)
+    dm := addEdge(mesh, d, m)
 
-    mb := addEdge(mesh, m.index, b.index)
-    bm := addEdge(mesh, b.index, m.index)
+    mb := addEdge(mesh, m, b)
+    bm := addEdge(mesh, b, m)
 
     // Create the new faces
     // mca
@@ -409,10 +417,10 @@ splitEdge :: proc(mesh: ^Mesh, edge: ^Edge) -> ^Vertex {
     indices[3*mdc_idx+2] = c.index
     
     // mab
-    mab := addFace(mesh, m.index, a.index, b.index)
+    mab := addFace(mesh, m, a, b)
 
     // mbd
-    mbd := addFace(mesh, m.index, b.index, d.index)
+    mbd := addFace(mesh, m, b, d)
 
     // Update outer edges
     ca.next = am.index
@@ -488,29 +496,27 @@ loopSubdivision :: proc(mesh: ^Mesh) {
     initialVertexCount := VertexIndex(len(mesh.vertices))
 
     // Calculate the new edge midpoints
-    for key, _ in edges {
-        edge := &edges[key]
-        vi := getFromVertex(mesh, edge)
-        vj := getToVertex(mesh, edge)
-        vk := getToVertex(mesh, getNextEdge(mesh, edge))
+    for _, &edge in edges {
+        vi := getFromVertex(&edge)
+        vj := getToVertex(&edge)
+        vk := getToVertex(getNextEdge(&edge))
         oppositeEdge := &edges[edge.opposite]
-        vl := getToVertex(mesh, getNextEdge(mesh, oppositeEdge))
+        vl := getToVertex(getNextEdge(oppositeEdge))
         edge._newMidpoint = (3.0/8.0)*(vi.position + vj.position) + (1.0/8.0)*(vk.position + vl.position)
     }
 
     // Calculate the new vertex positions
-    for _, i in vertices {
-        v := &vertices[i]
-        degree := getVertexDegree(mesh, v)
+    for &v in vertices {
+        degree := getVertexDegree(&v)
         u := f32(degree == 3 ? 3.0/16.0 : 3.0/(8.0*f32(degree)))
         v._newPosition = (1-f32(degree)*u) * v.position
-        startEdge := getIncidentEdge(mesh, v)
+        startEdge := getIncidentEdge(&v)
         currentEdge := startEdge
         sanityCheckDegree := VertexIndex(0)
         for {
-            next := getNextEdge(mesh, currentEdge)
-            v._newPosition += u * getToVertex(mesh, next).position
-            currentEdge = getOppositeEdge(mesh, getNextEdge(mesh, next))
+            next := getNextEdge(currentEdge)
+            v._newPosition += u * getToVertex(next).position
+            currentEdge = getOppositeEdge(getNextEdge(next))
             sanityCheckDegree += 1
             if currentEdge == startEdge {
                 break
@@ -523,24 +529,22 @@ loopSubdivision :: proc(mesh: ^Mesh) {
     }
 
     // Split all of the edges
-    for key, _ in edges {
-        edge := &edges[key]
-        vi, vj := getEdgeVertices(mesh, edge)
+    for _, &edge in edges {
+        vi, vj := getEdgeVertices(&edge)
 
         // Check that we haven't split this edge already or that it's not a newly created edge
         if vi.index < vj.index && vi.index < initialVertexCount && vj.index < initialVertexCount {
-            splitEdge(mesh, edge)
+            splitEdge(&edge)
         }
     }
 
     // Flip new edges that connect a new to an old vertex
-    for key, _ in edges {
-        edge := &edges[key]
-        vi, vj := getEdgeVertices(mesh, edge)
+    for _, &edge in edges {
+        vi, vj := getEdgeVertices(&edge)
         if edge._isNew && vi.index < vj.index && 
             ((vi._isNew && !vj._isNew) || (!vi._isNew && vj._isNew)) {
 
-            flipEdge(mesh, edge)
+            flipEdge(&edge)
             edge._isNew = false
         }
     }
@@ -555,8 +559,7 @@ loopSubdivision :: proc(mesh: ^Mesh) {
         positions[3*i+2] = v._newPosition[2]
     }
 
-    for key, _ in edges {
-        edge, _ := getEdgeFromIndex(mesh, key)
+    for _, &edge in edges {
         edge._isNew = false
     }
 }
@@ -649,36 +652,27 @@ printMesh :: proc(mesh: ^Mesh) {
     }
 
     fmt.printfln("Edges:")
-    for key, _ in mesh.edges {
-        edge := &mesh.edges[key]
-        from := getFromVertex(mesh, edge)
-        face := getEdgeFace(mesh, edge)
-        oppositeFace := getOppositeFace(mesh, edge)
-        if getNextEdge(mesh, edge) != nil {
-            to := getToVertex(mesh, edge)
-            fmt.printfln("\t[%p] e#%v: %v->%v, oppositeIndex=%v", &mesh.edges[key], key, from.index, to.index, edge.opposite)
-            fmt.printfln("\t\t[%p] edge: %v", edge, edge)
-            fmt.printfln("\t\t[%p] face: %v", face, face)
-            fmt.printfln("\t\t[%p] opposite face: %v", oppositeFace, oppositeFace)
+    for key, &edge in mesh.edges {
+        from := getFromVertex(&edge)
+        if getNextEdge(&edge) != nil {
+            to := getToVertex(&edge)
+            fmt.printfln("\t[%p] e#%v: %v->%v, oppositeIndex=%v", &edge, key, from.index, to.index, edge.opposite)
         } else {
             fmt.printfln("\te#%v: %v->NULL", key, from.index)
         }
     }
 
     fmt.printfln("Faces:")
-    for f, i in mesh.faces {
-        e0, ok := getEdge(mesh, f.incidentEdge)
-        if !ok {
-            fmt.printfln("Face#%v incident edge#%v does not exist!", i, f.incidentEdge)
-        }
-        e1 := getNextEdge(mesh, e0)
-        e2 := getNextEdge(mesh, e1)
+    for &f in mesh.faces {
+        e0 := getIncidentEdge(&f)
+        e1 := getNextEdge(e0)
+        e2 := getNextEdge(e1)
         fmt.printfln("\t[%p] f#%v: %v, %v, %v", 
-            &mesh.faces[i], 
+            &f, 
             f.index, 
-            getFromVertex(mesh, e0).index, 
-            getFromVertex(mesh, e1).index, 
-            getFromVertex(mesh, e2).index)
+            getFromVertex(e0).index, 
+            getFromVertex(e1).index, 
+            getFromVertex(e2).index)
     }
     fmt.printfln("====\n")
 }

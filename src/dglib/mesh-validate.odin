@@ -13,10 +13,10 @@ validateEdgesPrint :: proc(mesh: ^Mesh) {
 validateEdgeOpposites :: proc(mesh: ^Mesh) {
     for key, _ in mesh.edges {
         edge := &mesh.edges[key]
-        opposite := getOppositeEdge(mesh, edge)
+        opposite := getOppositeEdge(edge)
         if opposite == nil {
-            fromVertex := getFromVertex(mesh, edge).index
-            toVertex := getToVertex(mesh, edge).index
+            fromVertex := getFromVertex(edge).index
+            toVertex := getToVertex(edge).index
             fmt.printfln("Edge#%v %v->%v opposite edge#%v does not exist!", edge.index, fromVertex, toVertex, edge.opposite)
             assert(false, "Opposite edge does not exist!")
         }
@@ -24,18 +24,13 @@ validateEdgeOpposites :: proc(mesh: ^Mesh) {
 }
 
 validateFaceEdges :: proc(mesh: ^Mesh) {
-    for f, i in mesh.faces {
-        edge, ok := getEdge(mesh, f.incidentEdge)
-        if !ok {
-            fmt.printfln("Face#%v incident edge#%v does not exist!", i, f.incidentEdge)
-            assert(false, "Face incident edge does not exist!")
-        }
-
+    for &f, i in mesh.faces {
+        edge := getIncidentEdge(&f)
         vs: [3]VertexIndex
-        vs[0] = getFromVertex(mesh, edge).index
-        vs[1] = getToVertex(mesh, edge).index
-        next := getNextEdge(mesh, edge)
-        vs[2] = getToVertex(mesh, next).index
+        vs[0] = getFromVertex(edge).index
+        vs[1] = getToVertex(edge).index
+        next := getNextEdge(edge)
+        vs[2] = getToVertex(next).index
         abc: [3]VertexIndex
         abc[0] = mesh.indices[3*i]
         abc[1] = mesh.indices[3*i+1]
@@ -55,14 +50,13 @@ validateFaceEdges :: proc(mesh: ^Mesh) {
         }
     }
 
-    for key, _ in mesh.edges {
-        edge, _ := getEdge(mesh, key)
-        ij := edge
-        jk := getNextEdge(mesh, ij)
-        ki := getNextEdge(mesh, jk)
-        i := getFromVertex(mesh, ij).index
-        j := getToVertex(mesh, ij).index
-        k := getFromVertex(mesh ,ki).index
+    for _, &edge in mesh.edges {
+        ij := &edge
+        jk := getNextEdge(ij)
+        ki := getNextEdge(jk)
+        i := getFromVertex(ij).index
+        j := getToVertex(ij).index
+        k := getFromVertex(ki).index
 
         ij_face_idx := ij.face
         jk_face_idx := jk.face
@@ -80,11 +74,11 @@ validateFaceEdges :: proc(mesh: ^Mesh) {
 }
 
 validateEdgePrint :: proc(mesh: ^Mesh, edge: ^Edge) {
-    fromVertex := getFromVertex(mesh, edge).index
-    toVertex := getToVertex(mesh, edge).index
+    fromVertex := getFromVertex(edge).index
+    toVertex := getToVertex(edge).index
     fmt.printfln("Validating edge#%v %v->%v", edge.index, fromVertex, toVertex)
 
-    opposite := getOppositeEdge(mesh, edge)
+    opposite := getOppositeEdge(edge)
     if opposite == nil {
         fmt.printfln("Edge#%v %v->%v opposite edge#%v does not exist!", edge.index, fromVertex, toVertex, edge.opposite)
         assert(false, "Opposite edge does not exist!")
@@ -97,18 +91,18 @@ validateEdgePrint :: proc(mesh: ^Mesh, edge: ^Edge) {
                 edge.index, fromVertex, toVertex, edge, edge.index)
         }
         
-        oe := getOppositeEdge(mesh, e)
+        oe := getOppositeEdge(e)
         if edge == oe {
-            oFromVertex := getFromVertex(mesh, e).index
-            oToVertex := getToVertex(mesh, e).index
+            oFromVertex := getFromVertex(e).index
+            oToVertex := getToVertex(e).index
             fmt.printfln("\tEdge#%v %v->%v is opposite of edge#%v %v->%v", 
                 edge.index, fromVertex, toVertex, e.index, oFromVertex, oToVertex)
         }
 
-        ne := getNextEdge(mesh, e)
+        ne := getNextEdge(e)
         if edge == ne {
-            nFromVertex := getFromVertex(mesh, e).index
-            nToVertex := getToVertex(mesh, e).index
+            nFromVertex := getFromVertex(e).index
+            nToVertex := getToVertex(e).index
             fmt.printfln("\tEdge#%v %v->%v is next of edge%v %v->%v", 
                 edge.index, fromVertex, toVertex, e.index, nFromVertex, nToVertex)
         }
@@ -137,25 +131,25 @@ validateEdgePrint :: proc(mesh: ^Mesh, edge: ^Edge) {
 validateEdges :: proc(mesh: ^Mesh) {
     for key, _ in mesh.edges {
         edge := &mesh.edges[key]
-        from := getFromVertex(mesh, edge).index
-        to := getToVertex(mesh, edge).index
+        from := getFromVertex(edge).index
+        to := getToVertex(edge).index
         isValid := false
         isOppositevalid := false
 
-        face := getEdgeFace(mesh, edge)
-        if face.index == getOppositeFace(mesh, edge).index {
+        face := getEdgeFace(edge)
+        if face.index == getOppositeFace(edge).index {
             fmt.printfln("ERROR: [%p]edge#%v %v->%v and and it's opposite both point at [%p]face#%v",
                 edge, edge.index, from, to, face, face.index)
             assert(false, "ERROR: edge and it's opposite both point at the same face!")
         }
 
         for _, i in mesh.faces {
-            fi := getEdgeFace(mesh, edge)
+            fi := getEdgeFace(edge)
             if fi == &mesh.faces[i] {
                 isValid = true
             }
 
-            oppositeFace := getOppositeFace(mesh, edge)
+            oppositeFace := getOppositeFace(edge)
             if oppositeFace == &mesh.faces[i] {
                 isOppositevalid = true
             }
@@ -163,12 +157,12 @@ validateEdges :: proc(mesh: ^Mesh) {
 
         if !isValid {
             // printMesh(mesh)
-            fmt.printfln("ERROR: splitEdge: [%p] edge#%v %v->%v is point at an non-existant face [%p]!", &mesh.edges[key], key, getFromVertex(mesh, edge).index, getToVertex(mesh, edge).index, edge.face)
+            fmt.printfln("ERROR: splitEdge: [%p] edge#%v %v->%v is point at an non-existant face [%p]!", &mesh.edges[key], key, getFromVertex(edge).index, getToVertex(edge).index, edge.face)
             assert(false, "ERROR: splitEdge: edge is point at an non-existant face!")
         }
 
         if !isOppositevalid {
-            fmt.printfln("ERROR: splitEdge: edge#%v %v->%v is pointing at an non-existant opposite face!", key, getFromVertex(mesh, edge).index, getToVertex(mesh, edge).index)
+            fmt.printfln("ERROR: splitEdge: edge#%v %v->%v is pointing at an non-existant opposite face!", key, getFromVertex(edge).index, getToVertex(edge).index)
             assert(false, "ERROR: splitEdge: edge is pointing at an non-existant oppsite face!")
         }
     }
@@ -180,46 +174,46 @@ validateFaces :: proc(mesh: ^Mesh) {
         vi := indices[3*idx]
         vj := indices[3*idx+1]
         vk := indices[3*idx+2]
-        _, okij := getEdge(mesh, vi, vj)
+        _, okij := getEdgeFromVertexIndices(mesh, vi, vj)
         if !okij {
             //printMesh(mesh)
             fmt.printfln("ERROR: validateFaces: ij: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", 
-                idx, vi, vj, vk, getEdgeKey(mesh, vi, vj), vi, vj)
+                idx, vi, vj, vk, getEdgeKey(vi, vj), vi, vj)
             assert(false, "ERROR: validateFaces: invalid face!")
         }
 
-        _, okji := getEdge(mesh, vj, vi)
+        _, okji := getEdgeFromVertexIndices(mesh, vj, vi)
         if !okji {
             fmt.printfln("ERROR: validateFaces: ji: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", 
-                idx, vi, vj, vk, getEdgeKey(mesh, vj, vi), vj, vi)
+                idx, vi, vj, vk, getEdgeKey(vj, vi), vj, vi)
             assert(false, "ERROR: validateFaces: invalid face!")
         }
 
-        _, okjk := getEdge(mesh, vj, vk)
+        _, okjk := getEdgeFromVertexIndices(mesh, vj, vk)
         if !okjk {
             fmt.printfln("ERROR: validateFaces: jk: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", 
-                idx, vi, vj, vk, getEdgeKey(mesh, vj, vk), vj, vk)
+                idx, vi, vj, vk, getEdgeKey(vj, vk), vj, vk)
             assert(false, "ERROR: validateFaces: invalid face!")
         }
 
-        _, okkj := getEdge(mesh, vk, vj)
+        _, okkj := getEdgeFromVertexIndices(mesh, vk, vj)
         if !okkj {
             fmt.printfln("ERROR: validateFaces: kj: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", 
-                idx, vi, vj, vk, getEdgeKey(mesh, vk, vj), vk, vj)
+                idx, vi, vj, vk, getEdgeKey(vk, vj), vk, vj)
             assert(false, "ERROR: validateFaces: invalid face!")
         }
 
-        _, okki := getEdge(mesh, vk, vi)
+        _, okki := getEdgeFromVertexIndices(mesh, vk, vi)
         if !okki {
             fmt.printfln("ERROR: validateFaces: ki: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", 
-                idx, vi, vj, vk, getEdgeKey(mesh, vk, vi), vk, vi)
+                idx, vi, vj, vk, getEdgeKey(vk, vi), vk, vi)
             assert(false, "ERROR: validateFaces: invalid face!")
         }
 
-        _, okik := getEdge(mesh, vi, vk)
+        _, okik := getEdgeFromVertexIndices(mesh, vi, vk)
         if !okik {
             fmt.printfln("ERROR: validateFaces: ik: face#%v has an edge that does not exist! vertices=(%v, %v, %v), edge#%v=%v->%v", 
-                idx, vi, vj, vk, getEdgeKey(mesh, vi, vk), vi, vk)
+                idx, vi, vj, vk, getEdgeKey(vi, vk), vi, vk)
             assert(false, "ERROR: validateFaces: invalid face!")
         }
     }

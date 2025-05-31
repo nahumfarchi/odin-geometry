@@ -115,10 +115,10 @@ update :: proc(state: ^GameState, input: GameInput) {
 		a := mesh.indices[3*fi + j]
 		b := mesh.indices[3*fi + ((j + 1) % 3)]
 		if edge, ok := dgl.getEdge(mesh, a, b); ok {
-			fmt.printfln("Splitting [%p] edge#%v %v->%v: %v", edge, dgl.getEdgeKey(mesh, a, b), a, b, edge)
+			fmt.printfln("Splitting [%p] edge#%v %v->%v: %v", edge, dgl.getEdgeIndex(mesh, a, b), a, b, edge)
 			dgl.splitEdge(mesh, edge)
 		} else {
-			fmt.printfln("Splitting edge %v->%v failed, could not find edge in mesh! key=%v", a, b, dgl.getEdgeKey(mesh, a, b))
+			fmt.printfln("Splitting edge %v->%v failed, could not find edge in mesh! key=%v", a, b, dgl.getEdgeIndex(mesh, a, b))
 		}
 	}
 
@@ -141,7 +141,7 @@ draw :: proc(state: ^GameState) {
 	mesh := state.mesh
 	for key, _ in mesh.edges {
 		edge, _ := dgl.getEdge(mesh, key)
-		vi, vj := dgl.getEdgeVertices(mesh, edge)
+		vi, vj := dgl.getEdgeVertices(edge)
 		if vi.index < vj.index {
 			rl.DrawLine3D(vi.position, vj.position, SURFACE_COLOR2)
 		}
